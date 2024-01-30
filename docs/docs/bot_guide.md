@@ -18,23 +18,39 @@ Here, you can find more information about Manifold's undocumented API, for advan
 
 ## Prerequisites
 
-Try playing around with Manifold for a while, to gain familiarity with prediction markets.
+Try playing around with Manifold for a while, to gain familiarity with prediction markets and Manifold.
 
 We assume you can passibly use python, and know a bit about how the web and asynchronous programming works.
-We will be using the manifoldpy API wrapper, for ease of access. [Note: manifoldpy is very incomplete and being updated]
+We will be using the AutoFold API wrapper, for ease of access, yet fully featured capabilities and tools.
 
-For this guide, you will need to
-- Install [manifoldpy from PyPI](https://pypi.org/project/manifoldpy/) 
+For this guide, you will need to:
+- Install [AutoFold](https://github.com/willjallen/AutoFold) 
 - Create a separate Manifold account for your bot. You will need to submit a [pull request here](https://github.com/manifoldmarkets/manifold/pulls) to gain the bot label.
 - Get some mana, Manifold's play-money currency. New accounts start with 1000 free mana. 
 It's not required, but to trade with more mana, consider borrowing some from another user, or be a good predictor on your human account!
 
+# Getting Started
+Obtain your bot's API key by signing in to the bot's account, opening the [profile page](https://manifold.markets/profile), 
+clicking "show advanced", and clicking the blue copy button.
+
 ## Considerations
 
 ### Trading fees
+
+Manifold charges a fee of 0.25 mana per API trade.
+
 ### Latency
 
+The house trading bot, acc, has minimal latency. Other general purpose trading bots have more lag.
+The Supabase API theoretically features the least lag for reading information. Note that using Supabase to bet is not allowed.
+
 ### The Automated Market Maker
+
+Unlike the stock market, which is a peer to peer market, Manifold utilizes an automated market maker similar to Uniswap.
+
+The full documentation of Manifold's AMM, Maniswap, is available [here.](https://manifoldmarkets.notion.site/Maniswap-ce406e1e897d417cbd491071ea8a0c39)
+
+### Limit Orders
 
 ## Basic algorithmic trading strategies
 
@@ -42,6 +58,6 @@ It's not required, but to trade with more mana, consider borrowing some from ano
 
 ### Learning from other bots
 
-- Botlab
-- Yuna
-- Ithaca
+- Botlab: utilizes a mean reversion strategy, trading against new and unprofitable users
+- Yuna: gets real time sports betting odds from sportsbooks
+- N.C.Y. Bot: arbitrages markets with the same resolution
