@@ -24,7 +24,7 @@ We assume you can passibly use python, and know a bit about how the web and asyn
 We will be using the AutoFold API wrapper, for ease of access, yet fully featured capabilities and tools.
 
 For this guide, you will need to:
-- Install [AutoFold](https://github.com/willjallen/AutoFold) 
+- Install [AutoFold](https://github.com/willjallen/AutoFold) [Note: try ```pip install autofold==0.2.1```]
 - Create a separate Manifold account for your bot. You will need to submit a [pull request here](https://github.com/manifoldmarkets/manifold/pulls) to gain the bot label.
 - Get some mana, Manifold's play-money currency. New accounts start with 1000 free mana. 
 It's not required, but to trade with more mana, consider borrowing some from another user, or be a good predictor on your human account!
@@ -33,7 +33,20 @@ It's not required, but to trade with more mana, consider borrowing some from ano
 Obtain your bot's API key by signing in to the bot's account, opening the [profile page](https://manifold.markets/profile), 
 clicking "show advanced", and clicking the blue copy button.
 
+[Then set your API key.](https://manifoldbot.readthedocs.io/en/latest/getting_started/quickstart.html)
+
+
+Open up your favorite editor.
+
+```python3
+import autofold
+
+```
+
+Now run it! Try finding a new arbitrage pair to make sure the bot really works.
+
 ## Considerations
+
 
 ### Trading fees
 
