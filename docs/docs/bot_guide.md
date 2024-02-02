@@ -35,21 +35,30 @@ clicking "show advanced", and clicking the blue copy button.
 
 [Then set your API key.](https://manifoldbot.readthedocs.io/en/latest/getting_started/quickstart.html)
 
-Open up your favorite editor
+Open up your favorite editor.
+
+Let's fetch the markets
 ```python
 from autofold.api import ManifoldAPI
 
 m = ManifoldAPI()
 market1 = m.get_market_by_slug(market_slug="will-joe-biden-be-reelected-in-2024").result()
 market2 = m.get_market_by_slug(market_slug="will-joe-biden-win-the-2024-us-pres").result()
+```
 
+Here is some extremely basic arbitrage logic. If the probability deviates by 2%, it bets 10 mana on YES, on the underpriced 
+side, and bets 10 mana on NO for the overpriced side. This bot is pretty dumb.
+
+We need to round to 2 decimal points due to a limitation of the Manifold API
+
+```python
 if market1['probability'] + 0.02 < market2['probability']:
-    m.make_bet(10, market1['id'], 'YES', market1['probability'] + 0.01)
-    m.make_bet(10, market2['id'], 'NO', market2['probability'] - 0.01)
+    print(m.make_bet(10, market1['id'], 'YES', round(market1['probability'], 2) + 0.01).result())
+    print(m.make_bet(10, market2['id'], 'NO', round(market2['probability'], 2) - 0.01).result())
 
 if market2['probability'] + 0.02 < market1['probability']:
-    m.make_bet(10, market2['id'], 'YES', market2['probability'] + 0.01)
-    m.make_bet(10, market1['id'], 'NO', market1['probability'] - 0.01)
+    print(m.make_bet(10, market2['id'], 'YES', round(market2['probability'], 2) + 0.01).result())
+    print(m.make_bet(10, market1['id'], 'NO', round(market1['probability'], 2) - 0.01).result())
 ```
 
 Now run it! Since there are tons of arbitrage bots on this market, try finding a new arbitrage pair to make sure the bot really works.
