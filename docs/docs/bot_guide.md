@@ -24,7 +24,7 @@ We assume you can passibly use python, and know a bit about how the web and asyn
 We will be using the AutoFold API wrapper, for ease of access, yet fully featured capabilities and tools.
 
 For this guide, you will need to:
-- Install [AutoFold](https://github.com/willjallen/AutoFold) [Note: try ```pip install autofold==0.2.1```]
+- Install [AutoFold](https://github.com/willjallen/AutoFold) [Note: try ```pip install git+https://github.com/willjallen/AutoFold.git```]
 - Create a separate Manifold account for your bot. You will need to submit a [pull request here](https://github.com/manifoldmarkets/manifold/pulls) to gain the bot label.
 - Get some mana, Manifold's play-money currency. New accounts start with 1000 free mana. 
 It's not required, but to trade with more mana, consider borrowing some from another user, or be a good predictor on your human account!
@@ -35,18 +35,24 @@ clicking "show advanced", and clicking the blue copy button.
 
 [Then set your API key.](https://manifoldbot.readthedocs.io/en/latest/getting_started/quickstart.html)
 
+Open up your favorite editor
+```python
+from autofold.api import ManifoldAPI
 
-Open up your favorite editor.
+m = ManifoldAPI()
+market1 = m.get_market_by_slug(market_slug="will-joe-biden-be-reelected-in-2024").result()
+market2 = m.get_market_by_slug(market_slug="will-joe-biden-win-the-2024-us-pres").result()
 
-```python3
-import autofold
+if market1['probability'] + 0.02 < market2['probability']:
+    m.make_bet(10, market1['id'], 'YES', market1['probability'] + 0.01)
+    m.make_bet(10, market2['id'], 'NO', market2['probability'] - 0.01)
 
+if market2['probability'] + 0.02 < market1['probability']:
+    m.make_bet(10, market2['id'], 'YES', market2['probability'] + 0.01)
+    m.make_bet(10, market1['id'], 'NO', market1['probability'] - 0.01)
 ```
 
-Now run it! Try finding a new arbitrage pair to make sure the bot really works.
-
-## Considerations
-
+Now run it! Since there are tons of arbitrage bots on this market, try finding a new arbitrage pair to make sure the bot really works.
 
 ### Trading fees
 
@@ -67,10 +73,12 @@ The full documentation of Manifold's AMM, Maniswap, is available [here.](https:/
 
 ## Basic algorithmic trading strategies
 
-### Arbitrage
+
 
 ### Learning from other bots
 
-- Botlab: utilizes a mean reversion strategy, trading against new and unprofitable users
-- Yuna: gets real time sports betting odds from sportsbooks
-- N.C.Y. Bot: arbitrages markets with the same resolution
+There's a few non-trivial bots that you should try to take into account. 
+
+- Botlab: trades against new and unprofitable users. If you are new, you get free liquidity against this bot
+- Yuna: fetches real time sports betting odds from sportsbooks
+- Ithaca: Market taking and trade copying.
