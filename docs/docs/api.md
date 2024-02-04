@@ -1053,6 +1053,10 @@ Parameters:
 
 - `contractId`: The ID of the market to unresolve.
 
+### ```GET /request-loan```
+
+Collects the authenticated user's daily loan, available every 24 hours. Requires Auth.
+
 ## Changelog
 
 - 2023-12-19: Formatting & copy improvements. Updated parameters and return types.

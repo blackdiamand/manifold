@@ -9,4 +9,4 @@ slug: /
 This site hosts Manifold's:
 - [API documentation](/api)
 - [FAQ](/faq) 
-- [Basic guide to create a trading bot](/bot_guide)
+- [Basic trading bot guide](/bot_guide)
