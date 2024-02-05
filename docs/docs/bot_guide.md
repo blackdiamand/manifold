@@ -1,4 +1,16 @@
+---
+id: bot_guide
+slug: /bot_guide
+---
 # Create your own trading bot!
+
+:::caution
+
+This is an unofficial guide and not created by Manifold! If you notice something doesn't work, report it on
+[Discord](https://discord.com/invite/eHQBNBqXuh), in the #api-and-bots channel.
+
+You are responsible for your own mana.
+:::
 
 ## Welcome
 
@@ -63,6 +75,16 @@ if market2['probability'] + 0.02 < market1['probability']:
 
 Now run it! Since there are tons of arbitrage bots on this market, try finding a new arbitrage pair to make sure the bot really works.
 
+## Basic algorithmic trading strategies
+
+### Learning from other bots
+
+There's a few non-trivial bots that you should try to take into account. 
+
+- Botlab: trades against new and unprofitable users. If you are new, you get free liquidity against this bot
+- Yuna: fetches real time sports betting odds from sportsbooks
+- Ithaca: Market taking and trade copying.
+
 ### Trading fees
 
 Manifold charges a fee of 0.25 mana per API trade.
@@ -79,15 +101,3 @@ Unlike the stock market, which is a peer to peer market, Manifold utilizes an au
 The full documentation of Manifold's AMM, Maniswap, is available [here.](https://manifoldmarkets.notion.site/Maniswap-ce406e1e897d417cbd491071ea8a0c39)
 
 ### Limit Orders
-
-## Basic algorithmic trading strategies
-
-
-
-### Learning from other bots
-
-There's a few non-trivial bots that you should try to take into account. 
-
-- Botlab: trades against new and unprofitable users. If you are new, you get free liquidity against this bot
-- Yuna: fetches real time sports betting odds from sportsbooks
-- Ithaca: Market taking and trade copying.
