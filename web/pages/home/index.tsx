@@ -15,16 +15,18 @@ import { useIsMobile } from 'web/hooks/use-is-mobile'
 import { Headline } from 'common/news'
 import { HeadlineTabs } from 'web/components/dashboard/header'
 import { WelcomeTopicSections } from 'web/components/home/welcome-topic-sections'
-import { useMemberTopicsAndContractsOnLoad } from 'web/hooks/use-group-supabase'
+import { useNewUserMemberTopicsAndContracts } from 'web/hooks/use-group-supabase'
 import { LoadingIndicator } from 'web/components/widgets/loading-indicator'
 import { DAY_MS } from 'common/util/time'
+import { Banner } from 'web/components/nav/banner'
+import { usePersistentLocalState } from 'web/hooks/use-persistent-local-state'
 
 export async function getStaticProps() {
   const headlines = await api('headlines', {})
   return {
     props: {
       headlines,
-      revalidate: 30 * 60, // 4 hours
+      revalidate: 30 * 60, // 30 minutes
     },
   }
 }
@@ -39,19 +41,33 @@ export default function Home(props: { headlines: Headline[] }) {
 
   const { headlines } = props
   const isMobile = useIsMobile()
-  const memberTopicsWithContracts = useMemberTopicsAndContractsOnLoad(user?.id)
+  const memberTopicsWithContracts = useNewUserMemberTopicsAndContracts(user)
   const createdRecently = (user?.createdTime ?? 0) > Date.now() - DAY_MS
+
+  const [showBanner, setShowBanner] = usePersistentLocalState(
+    true,
+    'show-love-banner'
+  )
+
   return (
     <>
       <Welcome />
       <Page trackPageView={'home'} trackPageProps={{ kind: 'desktop' }}>
+        {isClient && showBanner && (
+          <Banner setShowBanner={setShowBanner} link="https://manifold.love">
+            Happy Valentine's Day! Find your love at{' '}
+            <span className="text-ink-700 font-semibold underline hover:text-pink-800">
+              manifold.love
+            </span>
+          </Banner>
+        )}
         <HeadlineTabs headlines={headlines} />
         <Row className="mx-3 mb-2 items-center gap-2">
           <div className="flex md:hidden">
             {user ? (
               <ProfileSummary
                 user={user}
-                avatarSize={isMobile ? 'sm' : undefined}
+                showProfile={isMobile ? true : undefined}
               />
             ) : (
               <Spacer w={4} />
