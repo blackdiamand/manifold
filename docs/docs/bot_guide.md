@@ -36,7 +36,7 @@ We assume you can passibly use python, and know a bit about how the web and asyn
 We will be using the AutoFold API wrapper, for ease of access, yet fully featured capabilities and tools.
 
 For this guide, you will need to:
-- Install [AutoFold](https://github.com/willjallen/AutoFold) [Note: try ```pip install git+https://github.com/willjallen/AutoFold.git```]
+- Install [AutoFold](https://github.com/willjallen/AutoFold) [Note: use ```pip install git+https://github.com/blackdiamand/AutoFold.git```]
 - Create a separate Manifold account for your bot. You will need to submit a [pull request here](https://github.com/manifoldmarkets/manifold/pulls) to gain the bot label.
 - Get some mana, Manifold's play-money currency. New accounts start with 1000 free mana. 
 It's not required, but to trade with more mana, consider borrowing some from another user, or be a good predictor on your human account!
@@ -75,7 +75,7 @@ if market2['probability'] + 0.02 < market1['probability']:
 
 Now run it! Since there are tons of arbitrage bots on this market, try finding a new arbitrage pair to make sure the bot really works.
 
-## Basic algorithmic trading strategies
+## Strategies
 
 ### Learning from other bots
 
@@ -83,7 +83,12 @@ There's a few non-trivial bots that you should try to take into account.
 
 - Botlab: trades against new and unprofitable users. If you are new, you get free liquidity against this bot
 - Yuna: fetches real time sports betting odds from sportsbooks
-- Ithaca: Market taking and trade copying.
+- Ithaca: Market taking and trade copying, that's all we know.
+
+Finally, take a look at the open source bots
+- [Botlab old version](https://github.com/mwhea/Manifold_Trading_Bots/): Mostly a mean reversion bot
+- [NiciusBot](https://github.com/NiciusB/ManifoldTradingBot): Similar to Botlab
+- [Old bots](https://manifold.markets/market/which-bots-will-win-the-manifold-tr)
 
 ### Trading fees
 
@@ -101,3 +106,6 @@ Unlike the stock market, which is a peer to peer market, Manifold utilizes an au
 The full documentation of Manifold's AMM, Maniswap, is available [here.](https://manifoldmarkets.notion.site/Maniswap-ce406e1e897d417cbd491071ea8a0c39)
 
 ### Limit Orders
+
+Not accounted for in Kelly bet calculators such as [Manifolio](https://manifol.io/) and [Case's API](https://www.val.town/v/case/market_kelly_bet).
+There's a high potential for either more profits or lower risk for free.
