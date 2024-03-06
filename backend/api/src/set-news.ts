@@ -1,10 +1,10 @@
-import { ENV_CONFIG, isAdminId, isModId } from 'common/envs/constants'
+import { isAdminId, isModId } from 'common/envs/constants'
 import { createSupabaseDirectClient } from 'shared/supabase/init'
 import { APIError, APIHandler } from './helpers/endpoint'
-import { revalidateCachedTag, revalidateStaticProps } from 'shared/utils'
+import { log, revalidateStaticProps } from 'shared/utils'
 import { track } from 'shared/analytics'
 
-export const setnews: APIHandler<'set-news'> = async (props, auth, { log }) => {
+export const setnews: APIHandler<'set-news'> = async (props, auth) => {
   const { dashboardIds, isPolitics } = props
   log('set-news', { dashboardIds, isPolitics })
 
@@ -38,7 +38,7 @@ export const setnews: APIHandler<'set-news'> = async (props, auth, { log }) => {
 
   await Promise.all(
     isPolitics
-      ? [revalidateCachedTag('politics-headlines', ENV_CONFIG.politicsDomain)]
+      ? [revalidateStaticProps(`/politics`)]
       : [
           revalidateStaticProps(`/home`),
           revalidateStaticProps(`/news`),

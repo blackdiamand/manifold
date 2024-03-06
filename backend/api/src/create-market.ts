@@ -16,12 +16,7 @@ import { marketCreationCosts, User } from 'common/user'
 import { randomString } from 'common/util/random'
 import { slugify } from 'common/util/slugify'
 import { getCloseDate } from 'shared/helpers/openai-utils'
-import {
-  GCPLog,
-  getUser,
-  getUserByUsername,
-  htmlToRichText,
-} from 'shared/utils'
+import { log, getUser, getUserByUsername, htmlToRichText } from 'shared/utils'
 import { APIError, AuthedUser, type APIHandler } from './helpers/endpoint'
 import { STONK_INITIAL_PROB } from 'common/stonk'
 import {
@@ -47,23 +42,22 @@ import {
 import { z } from 'zod'
 import { anythingToRichText } from 'shared/tiptap'
 import { runTxn, runTxnFromBank } from 'shared/txn/run-txn'
+import { onCreateMarket } from 'api/helpers/on-create-contract'
 
 type Body = ValidatedAPIParams<'market'>
+const firestore = admin.firestore()
 
-export const createMarket: APIHandler<'market'> = async (
-  body,
-  auth,
-  { log }
-) => {
-  const market = await createMarketHelper(body, auth, log)
-  return toLiteMarket(market)
+export const createMarket: APIHandler<'market'> = async (body, auth) => {
+  const market = await createMarketHelper(body, auth)
+  return {
+    result: toLiteMarket(market),
+    continue: async () => {
+      await onCreateMarket(market, firestore)
+    },
+  }
 }
 
-export async function createMarketHelper(
-  body: Body,
-  auth: AuthedUser,
-  log: GCPLog
-) {
+export async function createMarketHelper(body: Body, auth: AuthedUser) {
   const {
     question,
     description,
@@ -191,16 +185,9 @@ export async function createMarketHelper(
       specialLiquidityPerAnswer,
     })
 
-    const res = await runCreateMarketTxn(
-      contract,
-      ante,
-      user,
-      userDoc.ref,
-      contractRef,
-      trans
-    )
+    await runCreateMarketTxn(contractRef.id, ante, user, userDoc.ref, trans)
     trans.create(contractRef, contract)
-    return res
+    return contract
   })
 
   log('created contract ', {
@@ -230,11 +217,10 @@ export async function createMarketHelper(
 }
 
 const runCreateMarketTxn = async (
-  contract: Contract,
+  contractId: string,
   ante: number,
   user: User,
   userDocRef: admin.firestore.DocumentReference,
-  contractRef: admin.firestore.DocumentReference,
   trans: Transaction
 ) => {
   const { amountSuppliedByUser, amountSuppliedByHouse } = marketCreationCosts(
@@ -242,22 +228,11 @@ const runCreateMarketTxn = async (
     ante
   )
 
-  if (amountSuppliedByHouse > 0) {
-    await runTxnFromBank(trans, {
-      amount: amountSuppliedByHouse,
-      category: 'CREATE_CONTRACT_ANTE',
-      toId: contract.id,
-      toType: 'CONTRACT',
-      fromType: 'BANK',
-      token: 'M$',
-    })
-  }
-
   if (amountSuppliedByUser > 0) {
     await runTxn(trans, {
       fromId: user.id,
       fromType: 'USER',
-      toId: contract.id,
+      toId: contractId,
       toType: 'CONTRACT',
       amount: amountSuppliedByUser,
       token: 'M$',
@@ -265,12 +240,21 @@ const runCreateMarketTxn = async (
     })
   }
 
+  if (amountSuppliedByHouse > 0) {
+    await runTxnFromBank(trans, {
+      amount: amountSuppliedByHouse,
+      category: 'CREATE_CONTRACT_ANTE',
+      toId: contractId,
+      toType: 'CONTRACT',
+      fromType: 'BANK',
+      token: 'M$',
+    })
+  }
+
   if (amountSuppliedByHouse > 0)
     trans.update(userDocRef, {
       freeQuestionsCreated: FieldValue.increment(1),
     })
-
-  return contract
 }
 
 async function getCloseTimestamp(
@@ -298,8 +282,6 @@ const getSlug = async (trans: Transaction, question: string) => {
     ? proposedSlug + '-' + randomString()
     : proposedSlug
 }
-
-const firestore = admin.firestore()
 
 async function getContractFromSlug(trans: Transaction, slug: string) {
   const contractsRef = firestore.collection('contracts')
@@ -374,7 +356,7 @@ function validateMarketBody(body: Body) {
   if (outcomeType === 'MULTIPLE_CHOICE') {
     ;({ answers, addAnswersMode, shouldAnswersSumToOne, extraLiquidity } =
       validateMarketType(outcomeType, createMultiSchema, body))
-    if (answers.length < 2 && addAnswersMode === 'DISABLED')
+    if (answers.length < 2 && addAnswersMode === 'DISABLED' && !isLove)
       throw new APIError(
         400,
         'Multiple choice markets must have at least 2 answers if adding answers is disabled.'

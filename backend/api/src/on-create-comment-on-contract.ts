@@ -1,6 +1,6 @@
 import * as admin from 'firebase-admin'
-import { compact, first } from 'lodash'
-import { getDomainForContract, revalidateStaticProps } from 'shared/utils'
+import { compact } from 'lodash'
+import { log, revalidateStaticProps } from 'shared/utils'
 import { ContractComment } from 'common/comment'
 import { Bet } from 'common/bet'
 import {
@@ -11,32 +11,29 @@ import { parseMentions, richTextToString } from 'common/util/parse'
 import { addUserToContractFollowers } from 'shared/follow-market'
 import { Contract, contractPath } from 'common/contract'
 import { User } from 'common/user'
-import { addCommentOnContractToFeed } from 'shared/create-feed'
-import { getContractsDirect } from 'shared/supabase/contracts'
 import {
   createSupabaseDirectClient,
   SupabaseDirectClient,
 } from 'shared/supabase/init'
+import * as crypto from 'crypto'
 
 const firestore = admin.firestore()
 
 export const onCreateCommentOnContract = async (props: {
-  contractId: string
+  contract: Contract
   comment: ContractComment
   creator: User
   bet?: Bet
 }) => {
-  const { contractId, comment, creator, bet } = props
+  const { contract, comment, creator, bet } = props
   const pg = createSupabaseDirectClient()
 
-  const contracts = await getContractsDirect([contractId], pg)
-  const contract = first(contracts)
-  if (!contract)
-    throw new Error('Could not find contract corresponding with comment')
-
-  await revalidateStaticProps(
-    contractPath(contract),
-    getDomainForContract(contract)
+  await revalidateStaticProps(contractPath(contract)).catch((e) =>
+    log.error('Failed to revalidate contract after comment', {
+      e,
+      comment,
+      creator,
+    })
   )
 
   const lastCommentTime = comment.createdTime
@@ -48,18 +45,7 @@ export const onCreateCommentOnContract = async (props: {
     .doc(contract.id)
     .update({ lastCommentTime, lastUpdatedTime: Date.now() })
 
-  const repliedOrMentionedUserIds = await handleCommentNotifications(
-    pg,
-    comment,
-    contract,
-    creator,
-    bet
-  )
-  await addCommentOnContractToFeed(
-    contract,
-    comment,
-    repliedOrMentionedUserIds.concat([contract.creatorId, comment.userId])
-  )
+  await handleCommentNotifications(pg, comment, contract, creator, bet)
 }
 
 const getReplyInfo = async (

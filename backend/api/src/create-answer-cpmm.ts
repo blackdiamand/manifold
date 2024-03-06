@@ -19,32 +19,31 @@ import { floatingEqual } from 'common/util/math'
 import { noFees } from 'common/fees'
 import { getCpmmInitialLiquidity } from 'common/antes'
 import { addUserToContractFollowers } from 'shared/follow-market'
-import { GCPLog } from 'shared/utils'
+import { log } from 'shared/utils'
 import { createCommentOrAnswerOrUpdatedContractNotification } from 'shared/create-notification'
 import * as crypto from 'crypto'
 import { removeUndefinedProps } from 'common/util/object'
 
 export const createAnswerCPMM: APIHandler<'market/:contractId/answer'> = async (
   props,
-  auth,
-  gcpLogs
+  auth
 ) => {
   const { contractId, text } = props
-  return await createAnswerCpmmMain(contractId, text, auth!.uid, gcpLogs)
+  return await createAnswerCpmmMain(contractId, text, auth!.uid)
 }
 
 export const createAnswerCpmmMain = async (
   contractId: string,
   text: string,
   creatorId: string,
-  { log }: { log: GCPLog; logError: GCPLog },
   options: {
     overrideAddAnswersMode?: add_answers_mode
     specialLiquidityPerAnswer?: number
     loverUserId?: string
   } = {}
 ) => {
-  const { overrideAddAnswersMode, specialLiquidityPerAnswer, loverUserId } = options
+  const { overrideAddAnswersMode, specialLiquidityPerAnswer, loverUserId } =
+    options
   log('Received ' + contractId + ' ' + text)
 
   // Run as transaction to prevent race conditions.
@@ -85,6 +84,8 @@ export const createAnswerCpmmMain = async (
       if (!userSnap.exists)
         throw new APIError(401, 'Your account was not found')
       const user = userSnap.data() as User
+
+      if (user.isBannedFromPosting) throw new APIError(403, 'You are banned')
 
       if (user.balance < ANSWER_COST && !specialLiquidityPerAnswer)
         throw new APIError(403, 'Insufficient balance, need M' + ANSWER_COST)
@@ -136,7 +137,7 @@ export const createAnswerCpmmMain = async (
         totalLiquidity,
         subsidyPool: 0,
         probChanges: { day: 0, week: 0, month: 0 },
-        loverUserId
+        loverUserId,
       })
 
       if (shouldAnswersSumToOne) {
@@ -145,8 +146,7 @@ export const createAnswerCpmmMain = async (
           user,
           contract,
           answers,
-          newAnswer,
-          log
+          newAnswer
         )
       } else {
         const newAnswerDoc = contractDoc
@@ -203,8 +203,7 @@ async function createAnswerAndSumAnswersToOne(
   user: User,
   contract: CPMMMultiContract,
   answers: Answer[],
-  newAnswer: Answer,
-  log: GCPLog
+  newAnswer: Answer
 ) {
   const [otherAnswers, answersWithoutOther] = partition(
     answers,
@@ -370,7 +369,7 @@ async function createAnswerAndSumAnswersToOne(
       poolNo,
       prob,
     })
-    updateMakers(makers, betDoc.id, contractDoc, transaction, log)
+    updateMakers(makers, betDoc.id, contractDoc, transaction)
     for (const bet of ordersToCancel) {
       transaction.update(contractDoc.collection('bets').doc(bet.id), {
         isCancelled: true,

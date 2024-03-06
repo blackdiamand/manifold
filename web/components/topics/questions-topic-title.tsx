@@ -1,4 +1,4 @@
-import { Group, TOPIC_KEY } from 'common/group'
+import { Group } from 'common/group'
 import {
   ArrowLeftIcon,
   BookmarkIcon,
@@ -45,13 +45,18 @@ export const QuestionsTopicTitle = forwardRef(
     return (
       <Row
         className={
-          'col-span-8 my-1 items-center justify-between gap-1 sm:mb-3 xl:col-span-7'
+          'col-span-8 my-1 items-center justify-between gap-1 sm:mb-1 xl:col-span-7'
         }
         ref={ref}
       >
         <Col className={'mb-1 truncate'}>
           <Row className={'items-center gap-1'}>
-            <Button size={'2xs'} color={'gray-white'} onClick={router.back}>
+            <Button
+              size={'2xs'}
+              color={'gray-white'}
+              onClick={router.back}
+              className="flex lg:hidden"
+            >
               <ArrowLeftIcon className={'h-5 w-5'} />
             </Button>
             <span
@@ -73,9 +78,7 @@ export const QuestionsTopicTitle = forwardRef(
           {currentTopic && (
             <>
               <CopyLinkOrShareButton
-                url={`https://${DOMAIN}/browse?${TOPIC_KEY}=${
-                  currentTopic?.slug ?? ''
-                }`}
+                url={`https://${DOMAIN}/browse/${currentTopic?.slug ?? ''}`}
                 className={'gap-1 whitespace-nowrap'}
                 eventTrackingName={'copy questions page link'}
                 size={isMobile ? 'sm' : 'md'}

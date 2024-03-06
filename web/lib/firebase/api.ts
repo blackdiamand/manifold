@@ -8,7 +8,7 @@ import { ContractComment } from 'common/comment'
 import { MaybeAuthedContractParams } from 'common/contract'
 import { Portfolio, PortfolioItem } from 'common/portfolio'
 import { ReportProps } from 'common/report'
-import { BaseDashboard, Dashboard, DashboardItem } from 'common/dashboard'
+import { BaseDashboard, DashboardItem } from 'common/dashboard'
 import { Bet } from 'common/bet'
 import { API, APIParams, APIPath, APIResponse } from 'common/api/schema'
 import { baseApiCall, formatApiUrlWithParams } from 'common/util/api'
@@ -176,6 +176,16 @@ export function saveTopic(params: { topic: string }) {
   }>
 }
 
+export function setTV(params: {
+  streamId: string
+  slug: string
+  source: string
+}) {
+  return call(getApiUrl('settv'), 'POST', params) as Promise<{
+    status: 'success'
+  }>
+}
+
 export function getContractParams(params: { contractSlug: string }) {
   return call(
     getApiUrl('getcontractparams'),
@@ -331,14 +341,6 @@ export function deleteDashboard(params: { dashboardId: string }) {
   return call(getApiUrl('delete-dashboard'), 'POST', params)
 }
 
-export function getDashboardFromSlug(params: { dashboardSlug: string }) {
-  return call(
-    getApiUrl('getdashboardfromslug'),
-    'POST',
-    params
-  ) as Promise<Dashboard>
-}
-
 export function referUser(params: {
   referredByUsername: string
   contractId?: string
@@ -374,7 +376,8 @@ export function updatePrivateMessageChannel(params: {
 }
 export function editAnswerCpmm(params: {
   answerId: string
-  text: string
+  text?: string
+  color?: string
   contractId: string
 }) {
   return call(getApiUrl('edit-answer-cpmm'), 'POST', params)

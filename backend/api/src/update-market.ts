@@ -1,8 +1,5 @@
 import { APIError, APIHandler } from 'api/helpers/endpoint'
-import {
-  getContractSupabase,
-  revalidateContractStaticProps,
-} from 'shared/utils'
+import { log, getContractSupabase } from 'shared/utils'
 import * as admin from 'firebase-admin'
 import { trackPublicEvent } from 'shared/analytics'
 import { throwErrorIfNotMod } from 'shared/helpers/auth'
@@ -14,8 +11,7 @@ import { isEmpty } from 'lodash'
 
 export const updateMarket: APIHandler<'market/:contractId/update'> = async (
   body,
-  auth,
-  { log }
+  auth
 ) => {
   const { contractId, ...fields } = body
   if (isEmpty(fields))
@@ -87,8 +83,6 @@ export const updateMarket: APIHandler<'market/:contractId/update'> = async (
       ])
     )
   }
-
-  await revalidateContractStaticProps(contract)
 }
 
 const firestore = admin.firestore()

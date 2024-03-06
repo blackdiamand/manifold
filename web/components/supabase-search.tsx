@@ -2,7 +2,7 @@
 import { ArrowLeftIcon, ChevronDownIcon, XIcon } from '@heroicons/react/outline'
 import clsx from 'clsx'
 import { capitalize, sample, uniqBy } from 'lodash'
-import { ReactNode, useRef, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Contract } from 'common/contract'
 import { useEvent } from 'web/hooks/use-event'
 import { useDebouncedEffect } from 'web/hooks/use-debounced-effect'
@@ -21,7 +21,7 @@ import {
   useGroupFromSlug,
   useRealtimeMemberGroupIds,
 } from 'web/hooks/use-group-supabase'
-import { DEFAULT_TOPIC, LiteGroup, TOPIC_KEY } from 'common/group'
+import { LiteGroup } from 'common/group'
 import { TopicTag } from 'web/components/topics/topic-tag'
 import { AddContractToGroupButton } from 'web/components/topics/add-contract-to-group-modal'
 import { useUser } from 'web/hooks/use-user'
@@ -45,12 +45,15 @@ import {
 import { buildArray } from 'common/util/array'
 import { ContractsTable, LoadingContractRow } from './contract/contracts-table'
 import { LiteUser } from 'common/api/user-types'
+import router from 'next/router'
+import { usePersistentLocalState } from 'web/hooks/use-persistent-local-state'
 
 const USERS_PER_PAGE = 100
 const TOPICS_PER_PAGE = 100
 
 export const SORTS = [
-  { label: 'Trending', value: 'score' },
+  { label: 'Popular', value: 'score' },
+  { label: 'Trending', value: 'freshness-score' },
   { label: 'Bounty amount', value: 'bounty-amount' },
   { label: 'New', value: 'newest' },
   { label: 'High stakes', value: 'liquidity' },
@@ -74,6 +77,7 @@ const predictionMarketSorts = new Set([
   'most-popular',
   'prob-descending',
   'prob-ascending',
+  'freshness-score',
 ])
 
 const bountySorts = new Set(['bounty-amount'])
@@ -127,7 +131,6 @@ export type SearchParams = {
   [SORT_KEY]: Sort
   [FILTER_KEY]: Filter
   [CONTRACT_TYPE_KEY]: ContractTypeType
-  [TOPIC_KEY]: string
   [SEARCH_TYPE_KEY]: SearchType
 }
 
@@ -181,6 +184,7 @@ export function SupabaseSearch(props: {
   hideContractFilters?: boolean
   topics?: LiteGroup[]
   setTopics?: (topics: LiteGroup[]) => void
+  topicSlug?: string
   contractsOnly?: boolean
   showTopicTag?: boolean
   hideSearchTypes?: boolean
@@ -206,8 +210,10 @@ export function SupabaseSearch(props: {
     rowBelowFilters,
     topics: topicResults,
     setTopics: setTopicResults,
+    topicSlug = '',
     contractsOnly,
     showTopicTag,
+    hideSearch,
     hideSearchTypes,
     hideAvatars,
   } = props
@@ -218,6 +224,7 @@ export function SupabaseSearch(props: {
     defaultContractType,
     defaultSearchType,
     useUrlParams,
+    persistPrefix,
   })
   const user = useUser()
   // const followingUsers = useFollowedUsersOnLoad(user?.id)
@@ -225,7 +232,7 @@ export function SupabaseSearch(props: {
 
   const query = searchParams[QUERY_KEY]
   const searchType = searchParams[SEARCH_TYPE_KEY]
-  const topicSlug = searchParams[TOPIC_KEY]
+
   const sort = searchParams[SORT_KEY]
   const filter = searchParams[FILTER_KEY]
   const contractType = searchParams[CONTRACT_TYPE_KEY]
@@ -235,7 +242,7 @@ export function SupabaseSearch(props: {
   >(undefined, `${persistPrefix}-queried-user-results`)
 
   const { contracts, loading, queryContracts, shouldLoadMore } =
-    useContractSearch(persistPrefix, searchParams, additionalFilter)
+    useContractSearch(persistPrefix, searchParams, topicSlug, additionalFilter)
 
   const onChange = (changes: Partial<SearchParams>) => {
     setSearchParams(changes)
@@ -277,13 +284,15 @@ export function SupabaseSearch(props: {
   useDebouncedEffect(
     () => {
       const searchCount = ++searchCountRef.current
-      queryUsers(query).then((results) => {
-        if (searchCount === searchCountRef.current) setUserResults(results)
-      })
-      queryTopics(query).then((results) => {
-        if (searchCount === searchCountRef.current)
-          setTopicResults?.(results.lite)
-      })
+      // Wait for both queries to reduce visual flicker on update.
+      Promise.all([queryUsers(query), queryTopics(query)]).then(
+        ([userResults, topicResults]) => {
+          if (searchCount === searchCountRef.current) {
+            setUserResults(userResults)
+            setTopicResults?.(topicResults.lite)
+          }
+        }
+      )
     },
     100,
     [query]
@@ -298,7 +307,7 @@ export function SupabaseSearch(props: {
         No questions yet.
         {topicSlug && (
           <Row className={'mt-2 w-full items-center justify-center'}>
-            <AddContractToGroupButton groupSlug={searchParams[TOPIC_KEY]} />
+            <AddContractToGroupButton groupSlug={topicSlug} />
           </Row>
         )}
       </Col>
@@ -307,47 +316,49 @@ export function SupabaseSearch(props: {
   return (
     <Col className="w-full">
       <Col className={clsx('sticky top-0 z-20 ', headerClassName)}>
-        <Row>
-          <Col className={'w-full'}>
-            <Row className={'relative'}>
-              <Input
-                type="text"
-                inputMode="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onBlur={trackCallback('search', { query: query })}
-                placeholder={
-                  searchType === 'Users'
-                    ? 'Search users'
-                    : searchType === 'Topics'
-                    ? 'Search topics'
-                    : searchType === 'Questions' ||
-                      (topicSlug && topicSlug !== 'for-you')
-                    ? 'Search questions'
-                    : 'Search questions, users, and topics'
-                }
-                className="w-full"
-                autoFocus={autoFocus}
-              />
-              {query !== '' && (
-                <IconButton
-                  className={'absolute right-2 top-1/2 -translate-y-1/2'}
-                  size={'2xs'}
-                  onClick={() => {
-                    onChange({ [QUERY_KEY]: '' })
-                  }}
-                >
-                  {loading ? (
-                    <LoadingIndicator size="sm" />
-                  ) : (
-                    <XIcon className={'h-5 w-5 rounded-full'} />
-                  )}
-                </IconButton>
-              )}
-            </Row>
-          </Col>
-          {menuButton}
-        </Row>
+        {!hideSearch && (
+          <Row>
+            <Col className={'w-full'}>
+              <Row className={'relative'}>
+                <Input
+                  type="text"
+                  inputMode="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onBlur={trackCallback('search', { query: query })}
+                  placeholder={
+                    searchType === 'Users'
+                      ? 'Search users'
+                      : searchType === 'Topics'
+                      ? 'Search topics'
+                      : searchType === 'Questions' ||
+                        (topicSlug && topicSlug !== 'for-you')
+                      ? 'Search questions'
+                      : 'Search questions, users, and topics'
+                  }
+                  className="w-full"
+                  autoFocus={autoFocus}
+                />
+                {query !== '' && (
+                  <IconButton
+                    className={'absolute right-2 top-1/2 -translate-y-1/2'}
+                    size={'2xs'}
+                    onClick={() => {
+                      onChange({ [QUERY_KEY]: '' })
+                    }}
+                  >
+                    {loading ? (
+                      <LoadingIndicator size="sm" />
+                    ) : (
+                      <XIcon className={'h-5 w-5 rounded-full'} />
+                    )}
+                  </IconButton>
+                )}
+              </Row>
+            </Col>
+            {menuButton}
+          </Row>
+        )}
         {!hideContractFilters && (
           <ContractFilters
             includeProbSorts={includeProbSorts}
@@ -356,6 +367,7 @@ export function SupabaseSearch(props: {
             className={
               searchType && searchType !== 'Questions' ? 'invisible' : ''
             }
+            topicSlug={topicSlug}
             showTopicTag={showTopicTag}
           />
         )}
@@ -390,6 +402,9 @@ export function SupabaseSearch(props: {
                 : `${numHits} `
             return (
               <PillButton
+                className={clsx(
+                  option === 'Questions' ? 'min-w-[120px]' : 'min-w-[100px]'
+                )}
                 key={option}
                 selected={
                   searchType === option ||
@@ -422,12 +437,13 @@ export function SupabaseSearch(props: {
                 probColumn,
                 !hideActions && actionColumn,
               ])}
-              headerClassName={clsx(headerClassName, '!top-14')}
+              hideHeader
             />
             <LoadMoreUntilNotVisible loadMore={queryContracts} />
             {shouldLoadMore && <LoadingResults />}
             {!shouldLoadMore &&
-              (filter !== 'all' || contractType !== 'ALL') && (
+              (filter !== 'all' || contractType !== 'ALL') &&
+              !topicSlug && (
                 <div className="text-ink-500 mx-2 my-8 text-center">
                   No more results under this filter.{' '}
                   <button
@@ -482,7 +498,7 @@ const TopicResults = (props: {
   return (
     <Col className={'mt-1 w-full gap-1'}>
       {topics.map((group) => (
-        <Link key={group.id} href={`/browse?${TOPIC_KEY}=${group.slug}`}>
+        <Link key={group.id} href={`/browse/${group.slug}`}>
           <Row className={'hover:bg-primary-100 min-h-[4rem] p-1 pl-2 pt-2.5'}>
             <Col className={'w-full'}>
               <span className="line-clamp-1 sm:text-lg">{group.name}</span>
@@ -564,6 +580,7 @@ const FRESH_SEARCH_CHANGED_STATE: SearchState = {
 const useContractSearch = (
   persistPrefix: string,
   searchParams: SearchParams,
+  topicSlug: string,
   additionalFilter?: SupabaseAdditionalFilter
 ) => {
   const [state, setState] = usePersistentInMemoryState<SearchState>(
@@ -575,13 +592,7 @@ const useContractSearch = (
   const requestId = useRef(0)
 
   const queryContracts = useEvent(async (freshQuery?: boolean) => {
-    const {
-      q: query,
-      s: sort,
-      f: filter,
-      topic: topicSlug,
-      ct: contractType,
-    } = searchParams
+    const { q: query, s: sort, f: filter, ct: contractType } = searchParams
 
     // if fresh query and the search params haven't changed (like user clicked back) do nothing
     if (
@@ -590,7 +601,8 @@ const useContractSearch = (
       sort === state.lastSearchParams?.sort &&
       filter === state.lastSearchParams?.filter &&
       contractType === state.lastSearchParams?.contractType &&
-      topicSlug === state.lastSearchParams?.topicSlug
+      topicSlug === state.lastSearchParams?.topicSlug &&
+      topicSlug !== 'recent'
     ) {
       return state.shouldLoadMore
     }
@@ -663,6 +675,7 @@ const useContractSearch = (
 }
 
 const useSearchQueryState = (props: {
+  persistPrefix: string
   defaultSort?: Sort
   defaultFilter?: Filter
   defaultContractType?: ContractTypeType
@@ -670,24 +683,34 @@ const useSearchQueryState = (props: {
   useUrlParams?: boolean
 }) => {
   const {
-    defaultSort = 'score',
+    persistPrefix,
+    defaultSort,
     defaultFilter = 'open',
     defaultContractType = 'ALL',
     defaultSearchType,
     useUrlParams,
   } = props
 
+  const [lastSort, setLastSort] = usePersistentLocalState<Sort>(
+    defaultSort ?? 'score',
+    `${persistPrefix}-last-search-sort`
+  )
+
   const defaults = {
     [QUERY_KEY]: '',
-    [SORT_KEY]: defaultSort,
+    [SORT_KEY]: lastSort,
     [FILTER_KEY]: defaultFilter,
     [CONTRACT_TYPE_KEY]: defaultContractType,
-    [TOPIC_KEY]: DEFAULT_TOPIC,
     [SEARCH_TYPE_KEY]: defaultSearchType,
   }
 
   const useHook = useUrlParams ? usePersistentQueriesState : useShim
   const [state, setState, ready] = useHook(defaults)
+
+  useEffect(() => {
+    setLastSort(state.s)
+  }, [state.s])
+
   return [state, setState, ready] as const
 }
 
@@ -701,12 +724,19 @@ function ContractFilters(props: {
   includeProbSorts?: boolean
   params: SearchParams
   updateParams: (params: Partial<SearchParams>) => void
+  topicSlug: string
   showTopicTag?: boolean
 }) {
-  const { className, includeProbSorts, params, updateParams, showTopicTag } =
-    props
+  const {
+    className,
+    topicSlug,
+    includeProbSorts,
+    params,
+    updateParams,
+    showTopicTag,
+  } = props
 
-  const { s: sort, f: filter, ct: contractType, topic: topicSlug } = params
+  const { s: sort, f: filter, ct: contractType } = params
 
   const selectFilter = (selection: Filter) => {
     if (selection === filter) return
@@ -750,7 +780,7 @@ function ContractFilters(props: {
   const sortLabel = getLabelFromValue(SORTS, sort)
   const contractTypeLabel = getLabelFromValue(CONTRACT_TYPES, contractType)
   const topic = useGroupFromSlug(topicSlug ?? '')
-  const setTopic = (slug: string) => updateParams({ [TOPIC_KEY]: slug })
+  const resetTopic = () => router.push(`/browse`)
 
   return (
     <Col
@@ -829,7 +859,7 @@ function ContractFilters(props: {
             topic={topic}
             location={'questions page'}
           >
-            <button onClick={() => setTopic('')}>
+            <button onClick={resetTopic}>
               <XIcon className="hover:text-ink-700 text-ink-400 ml-1  h-4 w-4" />
             </button>
           </TopicTag>
@@ -844,7 +874,7 @@ function ContractFilters(props: {
               #
             </span>
             ⭐️ For you
-            <button onClick={() => setTopic('')}>
+            <button onClick={resetTopic}>
               <XIcon className="hover:text-ink-700 text-ink-400 ml-1 h-4 w-4" />
             </button>
           </Row>

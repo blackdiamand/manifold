@@ -1,8 +1,9 @@
 import * as cors from 'cors'
+import * as crypto from 'crypto'
 import * as express from 'express'
 import { ErrorRequestHandler, RequestHandler } from 'express'
 
-import { log } from 'shared/utils'
+import { log, withLogContext } from 'shared/log'
 import { APIError, pathWithPrefix } from 'common/api/utils'
 import { health } from './health'
 import { transact } from './transact'
@@ -74,7 +75,10 @@ import { updatedashboard } from './update-dashboard'
 import { deletedashboard } from './delete-dashboard'
 import { setnews } from './set-news'
 import { getnews } from './get-news'
-import { getdashboardfromslug } from './get-dashboard-from-slug'
+import {
+  getdashboardfromslug,
+  getDashboardFromSlug,
+} from './get-dashboard-from-slug'
 import { unresolve } from './unresolve'
 import { referuser } from 'api/refer-user'
 import { banuser } from 'api/ban-user'
@@ -124,7 +128,7 @@ import { type APIHandler, typedEndpoint } from './helpers/endpoint'
 import { requestloan } from 'api/request-loan'
 import { removePinnedPhoto } from './love/remove-pinned-photo'
 import { getHeadlines, getPoliticsHeadlines } from './get-headlines'
-import { getrelatedmarkets } from 'api/get-related-markets'
+import { getrelatedmarketscache } from 'api/get-related-markets'
 import { getadanalytics } from 'api/get-ad-analytics'
 import { getCompatibilityQuestions } from './love/get-compatibililty-questions'
 import { addOrRemoveReaction } from './reaction'
@@ -143,6 +147,10 @@ import { getLoverAnswers } from './love/get-lover-answers'
 import { createYourLoveMarket } from './love/create-your-love-market'
 import { getLoveMarket } from './love/get-love-market'
 import { getLoveMarkets } from './love/get-love-markets'
+import { settv } from './set-tv'
+import { getPartnerStats } from './get-partner-stats'
+import { getSeenMarketIds } from 'api/get-seen-market-ids'
+import { recordContractView } from 'api/record-contract-view'
 
 const allowCorsUnrestricted: RequestHandler = cors({})
 
@@ -153,24 +161,33 @@ function cacheController(policy?: string): RequestHandler {
   }
 }
 
-const requestLogger: RequestHandler = (req, _res, next) => {
-  log(`${req.method} ${req.url} ${JSON.stringify(req.body ?? '')}`)
-  next()
+const requestContext: RequestHandler = (req, _res, next) => {
+  const traceContext = req.get('X-Cloud-Trace-Context')
+  const traceId = traceContext
+    ? traceContext.split('/')[0]
+    : crypto.randomUUID()
+  const context = { endpoint: req.path, traceId }
+  withLogContext(context, () => {
+    log(`${req.method} ${req.url}`)
+    next()
+  })
 }
 
-const apiErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  if (res.headersSent) {
-    return next(err)
-  }
-  if (err instanceof APIError) {
-    const output: { [k: string]: unknown } = { message: err.message }
-    if (err.details != null) {
-      output.details = err.details
+const apiErrorHandler: ErrorRequestHandler = (error, _req, res, next) => {
+  if (error instanceof APIError) {
+    log.info(error)
+    if (!res.headersSent) {
+      const output: { [k: string]: unknown } = { message: error.message }
+      if (error.details != null) {
+        output.details = error.details
+      }
+      res.status(error.code).json(output)
     }
-    res.status(err.code).json(output)
   } else {
-    console.error(err.stack)
-    res.status(500).json({ message: `An unknown error occurred: ${err.stack}` })
+    log.error(error)
+    if (!res.headersSent) {
+      res.status(500).json({ message: error.stack, error })
+    }
   }
 }
 
@@ -184,7 +201,7 @@ const apiRoute = (endpoint: RequestHandler) => {
 }
 
 export const app = express()
-app.use(requestLogger)
+app.use(requestContext)
 
 app.options('*', allowCorsUnrestricted)
 
@@ -240,7 +257,7 @@ const handlers: { [k in APIPath]: APIHandler<k> } = {
   'fetch-link-preview': fetchLinkPreview,
   'request-loan': requestloan,
   'remove-pinned-photo': removePinnedPhoto,
-  'get-related-markets': getrelatedmarkets,
+  'get-related-markets-cache': getrelatedmarketscache,
   'unlist-and-cancel-user-contracts': unlistAndCancelUserContracts,
   'get-ad-analytics': getadanalytics,
   'get-compatibility-questions': getCompatibilityQuestions,
@@ -261,6 +278,10 @@ const handlers: { [k in APIPath]: APIHandler<k> } = {
   'create-your-love-market': createYourLoveMarket,
   'get-love-market': getLoveMarket,
   'get-love-markets': getLoveMarkets,
+  'get-partner-stats': getPartnerStats,
+  'get-seen-market-ids': getSeenMarketIds,
+  'record-contract-view': recordContractView,
+  'get-dashboard-from-slug': getDashboardFromSlug,
 }
 
 Object.entries(handlers).forEach(([path, handler]) => {
@@ -349,6 +370,8 @@ app.post(
 app.post('/follow-user', ...apiRoute(followUser))
 app.post('/report', ...apiRoute(report))
 app.post('/unresolve', ...apiRoute(unresolve))
+
+app.post('/settv', ...apiRoute(settv))
 
 app.post('/createdashboard', ...apiRoute(createdashboard))
 app.post('/getyourdashboards', ...apiRoute(getyourdashboards))

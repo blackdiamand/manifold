@@ -1,7 +1,7 @@
 import { SupabaseDirectClient } from 'shared/supabase/init'
 import { SupabaseClient, tsToMillis } from 'common/supabase/utils'
 import { DAY_MS, HOUR_MS, MINUTE_MS } from 'common/util/time'
-import { GCPLog } from 'shared/utils'
+import { log } from 'shared/utils'
 import { getRecentContractLikes } from 'shared/supabase/likes'
 import {
   insertMarketMovementContractToUsersFeeds,
@@ -28,7 +28,6 @@ export async function addInterestingContractsToFeed(
   db: SupabaseClient,
   pg: SupabaseDirectClient,
   reloadAllEmbeddings: boolean,
-  log: GCPLog,
   readOnly = false
 ) {
   log(`Starting feed population. Loading user embeddings to store...`)
@@ -103,8 +102,7 @@ export async function addInterestingContractsToFeed(
           thisWeekScore,
           importanceScore: parseFloat(importanceScore.toPrecision(2)),
         },
-        'new',
-        log
+        'new'
       )
     } else if (
       !readOnly &&
@@ -124,8 +122,7 @@ export async function addInterestingContractsToFeed(
           tradersInPastHour: hourAgoTradersByContract[contract.id] ?? 0,
           importanceScore: parseFloat(importanceScore.toPrecision(2)),
         },
-        'old',
-        log
+        'old'
       )
     }
 
@@ -139,8 +136,7 @@ export async function addInterestingContractsToFeed(
         todayScore,
         importanceScore,
       })
-      if (!readOnly)
-        await insertMarketMovementContractToUsersFeeds(contract, log)
+      if (!readOnly) await insertMarketMovementContractToUsersFeeds(contract)
     }
   }
   log('Done adding trending contracts to feed')
@@ -153,17 +149,16 @@ const getUserEmbeddingDetails = async (
 ) => {
   const newUserInterestEmbeddings: Dictionary<UserEmbeddingDetails> = {}
 
-  // mqp -- careful with this query, a correlated subquery seemed like it
-  // worked best to me to avoid an expensive scan over the huge USM table
   await pg.map(
     `
     select u.id as user_id,
       u.created_time as created_time,
       ((u.data->'lastBetTime')::bigint) as last_bet_time,
       coalesce((
-        select ts_to_millis(max(usm.created_time)) as max_created_time
-        from user_seen_markets usm
-        where usm.user_id = u.id), 0) as last_seen_time,
+        select ts_to_millis(max(
+          greatest(ucv.last_page_view_ts, ucv.last_promoted_view_ts, ucv.last_card_view_ts)))
+        from user_contract_views ucv
+        where ucv.user_id = u.id), 0) as last_seen_time,
       interest_embedding,
       disinterest_embedding
     from users as u

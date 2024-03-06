@@ -1,4 +1,3 @@
-import clsx from 'clsx'
 import dayjs from 'dayjs'
 import { clamp, sumBy } from 'lodash'
 import { useState } from 'react'
@@ -11,27 +10,30 @@ import { calculateCpmmMultiArbitrageBet } from 'common/calculate-cpmm-arbitrage'
 import {
   CPMMBinaryContract,
   CPMMMultiContract,
+  getBinaryMCProb,
+  isBinaryMulti,
   PseudoNumericContract,
   StonkContract,
 } from 'common/contract'
 import { computeCpmmBet } from 'common/new-bet'
 import { formatMoney, formatPercent } from 'common/util/format'
-import { removeUndefinedProps } from 'common/util/object'
 import { DAY_MS, HOUR_MS, MINUTE_MS, WEEK_MS } from 'common/util/time'
 import { Input } from 'web/components/widgets/input'
-import { APIError, api } from 'web/lib/firebase/api'
 import { User } from 'web/lib/firebase/users'
-import { track } from 'web/lib/service/analytics'
 import { Button } from '../buttons/button'
 import { Col } from '../layout/col'
 import { Row } from '../layout/row'
-import { Spacer } from '../layout/spacer'
 import { BinaryOutcomeLabel, PseudoNumericOutcomeLabel } from '../outcome-label'
 import { BuyAmountInput } from '../widgets/amount-input'
 import { OrderBookButton } from './order-book'
-import { YesNoSelector } from './yes-no-selector'
 import { ProbabilityOrNumericInput } from '../widgets/probability-input'
 import { getPseudoProbability } from 'common/pseudo-numeric'
+import { usePersistentInMemoryState } from 'web/hooks/use-persistent-in-memory-state'
+import { MultiBetProps } from 'web/components/bet/bet-panel'
+import { track } from '@amplitude/analytics-browser'
+import { APIError } from 'common/api/utils'
+import { removeUndefinedProps } from 'common/util/object'
+import { api } from 'web/lib/firebase/api'
 
 export default function LimitOrderPanel(props: {
   contract:
@@ -39,25 +41,31 @@ export default function LimitOrderPanel(props: {
     | PseudoNumericContract
     | StonkContract
     | CPMMMultiContract
-  multiProps?: { answers: Answer[]; answerToBuy: Answer }
+  multiProps?: MultiBetProps
   user: User | null | undefined
   unfilledBets: LimitBet[]
   balanceByUserId: { [userId: string]: number }
-  hidden: boolean
+
   onBuySuccess?: () => void
   className?: string
+  outcome: 'YES' | 'NO' | undefined
 }) {
   const {
     contract,
     multiProps,
-    user,
     unfilledBets,
     balanceByUserId,
-    hidden,
+    user,
+    outcome,
     onBuySuccess,
-    className,
   } = props
-
+  const isBinaryMC = isBinaryMulti(contract)
+  const binaryMCOutcome =
+    isBinaryMC && multiProps
+      ? multiProps.answerText === multiProps.answerToBuy.text
+        ? 'YES'
+        : 'NO'
+      : undefined
   const isCpmmMulti = contract.mechanism === 'cpmm-multi-1'
   if (isCpmmMulti && !multiProps) {
     throw new Error('multiProps must be defined for cpmm-multi-1')
@@ -70,13 +78,18 @@ export default function LimitOrderPanel(props: {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Expiring orders
-  const [addExpiration, setAddExpiration] = useState(false)
+  const [addExpiration, setAddExpiration] = usePersistentInMemoryState(
+    false,
+    'add-limit-order-expiration'
+  )
   const initTimeInMs = Number(Date.now() + 5 * MINUTE_MS)
   const initDate = dayjs(initTimeInMs).format('YYYY-MM-DD')
   const initTime = dayjs(initTimeInMs).format('HH:mm')
-  const [expirationDate, setExpirationDate] = useState<string>(initDate)
+  const [expirationDate, setExpirationDate] =
+    usePersistentInMemoryState<string>(initDate, 'limit-order-expiration-date')
   const [expirationHoursMinutes, setExpirationHoursMinutes] =
-    useState<string>(initTime)
+    usePersistentInMemoryState<string>(initTime, 'limit-order-expiration-time')
+
   const expiresAt = addExpiration
     ? dayjs(`${expirationDate}T${expirationHoursMinutes}`).valueOf()
     : undefined
@@ -85,14 +98,12 @@ export default function LimitOrderPanel(props: {
     undefined
   )
 
-  const [outcome, setOutcome] = useState<'YES' | 'NO' | undefined>(undefined)
-
   const hasLimitBet = !!limitProbInt && !!betAmount
 
   const betDisabled =
     isSubmitting || !outcome || !betAmount || !!error || !hasLimitBet
 
-  const limitProb =
+  const preLimitProb =
     limitProbInt === undefined
       ? undefined
       : clamp(
@@ -107,12 +118,26 @@ export default function LimitOrderPanel(props: {
           0.001,
           0.999
         )
+  const limitProb =
+    !preLimitProb || !isBinaryMC
+      ? preLimitProb
+      : getBinaryMCProb(preLimitProb, outcome as 'YES' | 'NO')
 
   const amount = betAmount ?? 0
 
   function onBetChange(newAmount: number | undefined) {
     setBetAmount(newAmount)
   }
+
+  const cpmmState = isCpmmMulti
+    ? {
+        pool: {
+          YES: multiProps!.answerToBuy.poolYes,
+          NO: multiProps!.answerToBuy.poolNo,
+        },
+        p: 0.5,
+      }
+    : { pool: contract.pool, p: contract.p }
 
   async function submitBet() {
     if (!user || betDisabled) return
@@ -161,16 +186,6 @@ export default function LimitOrderPanel(props: {
     })
   }
 
-  const cpmmState = isCpmmMulti
-    ? {
-        pool: {
-          YES: multiProps!.answerToBuy.poolYes,
-          NO: multiProps!.answerToBuy.poolNo,
-        },
-        p: 0.5,
-      }
-    : { pool: contract.pool, p: contract.p }
-
   const initialProb = isCpmmMulti
     ? multiProps!.answerToBuy.prob
     : getProbability(contract)
@@ -185,7 +200,7 @@ export default function LimitOrderPanel(props: {
     amount: filledAmount,
   } = getBetReturns(
     cpmmState,
-    outcome ?? 'YES',
+    binaryMCOutcome ?? outcome ?? 'YES',
     amount,
     limitProb ?? initialProb,
     unfilledBets,
@@ -199,29 +214,9 @@ export default function LimitOrderPanel(props: {
   )
 
   return (
-    <Col className={clsx(className, hidden && 'hidden')}>
-      <Row className="mb-4 items-center justify-between">
-        <div className="text-lg">Place a limit order</div>
-
-        <OrderBookButton
-          limitBets={unfilledBetsMatchingAnswer}
-          contract={contract}
-        />
-      </Row>
-
-      <Col className="relative mb-8 w-full gap-3">
-        <Row className="items-center gap-3">
-          Outcome
-          <YesNoSelector
-            selected={outcome}
-            btnClassName={'!rounded-full'}
-            onSelect={(selected) => setOutcome(selected)}
-            disabled={isSubmitting}
-            yesLabel={isPseudoNumeric ? 'HIGHER' : undefined}
-            noLabel={isPseudoNumeric ? 'LOWER' : undefined}
-          />
-        </Row>
-        <Row className="w-full items-center gap-3">
+    <>
+      <Col className="relative my-2 w-full gap-3">
+        <Row className="text-ink-700 w-full items-center gap-3">
           {isPseudoNumeric ? 'Value' : 'Probability'}
           <ProbabilityOrNumericInput
             contract={contract}
@@ -231,10 +226,13 @@ export default function LimitOrderPanel(props: {
             onRangeError={setInputError}
             disabled={isSubmitting}
           />
+
+          <OrderBookButton
+            limitBets={unfilledBetsMatchingAnswer}
+            contract={contract}
+          />
         </Row>
       </Col>
-
-      <span className="text-ink-800 mb-2 text-sm">Amount</span>
 
       <BuyAmountInput
         amount={betAmount}
@@ -242,11 +240,10 @@ export default function LimitOrderPanel(props: {
         error={error}
         setError={setError}
         disabled={isSubmitting}
-        showBalance
         showSlider
       />
 
-      <div className="mb-4">
+      <div className="my-3">
         <Button
           className={'mt-4'}
           onClick={() => setAddExpiration(!addExpiration)}
@@ -341,9 +338,9 @@ export default function LimitOrderPanel(props: {
               {isPseudoNumeric ? (
                 <PseudoNumericOutcomeLabel outcome={outcome} />
               ) : (
-                <BinaryOutcomeLabel outcome={outcome} />
+                !isBinaryMC && <BinaryOutcomeLabel outcome={outcome} />
               )}{' '}
-              filled now
+              {isBinaryMC ? 'Filled' : 'filled'} now
             </div>
             <div className="mr-2 whitespace-nowrap">
               {formatMoney(filledAmount)} of {formatMoney(orderAmount)}
@@ -359,7 +356,9 @@ export default function LimitOrderPanel(props: {
                   'Shares'
                 ) : (
                   <>
-                    Max <BinaryOutcomeLabel outcome={outcome} /> payout
+                    Max{' '}
+                    {!isBinaryMC && <BinaryOutcomeLabel outcome={outcome} />}{' '}
+                    payout
                   </>
                 )}
               </div>
@@ -373,32 +372,44 @@ export default function LimitOrderPanel(props: {
           </Row>
         )}
 
-        {hasLimitBet && <Spacer h={8} />}
+        <Row className="items-center justify-between gap-2">
+          {user && (
+            <Button
+              size="xl"
+              disabled={betDisabled || inputError}
+              color={
+                binaryMCOutcome === 'YES'
+                  ? 'indigo'
+                  : binaryMCOutcome === 'NO'
+                  ? 'amber'
+                  : outcome === 'YES'
+                  ? 'green'
+                  : 'red'
+              }
+              loading={isSubmitting}
+              className="flex-1"
+              onClick={submitBet}
+            >
+              {isSubmitting
+                ? 'Submitting...'
+                : !outcome
+                ? 'Choose YES or NO'
+                : !limitProb
+                ? 'Enter a probability'
+                : !betAmount
+                ? 'Enter an amount'
+                : binaryMCOutcome
+                ? `Submit order for ${formatMoney(
+                    betAmount
+                  )} at ${formatPercent(preLimitProb ?? 0)}`
+                : `Submit ${outcome} order for ${formatMoney(
+                    betAmount
+                  )} at ${formatPercent(limitProb)}`}
+            </Button>
+          )}
+        </Row>
       </Col>
-
-      {user && (
-        <Button
-          size="xl"
-          disabled={betDisabled || inputError}
-          color={outcome === 'YES' ? 'green' : 'red'}
-          loading={isSubmitting}
-          className="flex-1"
-          onClick={submitBet}
-        >
-          {isSubmitting
-            ? 'Submitting...'
-            : !outcome
-            ? 'Choose YES or NO'
-            : !limitProb
-            ? 'Enter a probability'
-            : !betAmount
-            ? 'Enter an amount'
-            : `Submit ${outcome} order for ${formatMoney(
-                betAmount
-              )} at ${formatPercent(limitProb)}`}
-        </Button>
-      )}
-    </Col>
+    </>
   )
 }
 

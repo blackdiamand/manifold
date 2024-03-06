@@ -32,6 +32,7 @@ import { Avatar } from 'web/components/widgets/avatar'
 import { ScaleIcon } from '@heroicons/react/outline'
 import { QuestType } from 'common/quest'
 import { Input } from 'web/components/widgets/input'
+import { formatJustTime, formatTimeShort } from 'web/lib/util/time'
 
 export const BalanceCard = (props: {
   user: User
@@ -56,52 +57,41 @@ export const BalanceCard = (props: {
     ),
     'amount'
   )
-  const previewChanges = balanceChanges.slice(0, 3)
-  const moreChanges = Math.max(balanceChanges.length - previewChanges.length, 0)
   return (
     <Row className={className} onClick={onSeeChanges}>
       <Col className={'w-full gap-1.5'}>
-        <span className={'text-ink-800 ml-1'}>Your balance</span>
-        <span className={'text-ink-800 mb-1 text-5xl'}>
-          {formatMoney(user.balance)}
-        </span>
-        <Row className={'text-ink-600 mb-1 w-full flex-wrap justify-between'}>
-          <Row className={'gap-1'}>
+        <Col>
+          <div className={'text-ink-800 text-4xl'}>
+            {formatMoney(user.balance)}
+          </div>
+          <div className={'text-ink-800 ml-1 w-full flex-wrap gap-2'}>
+            Your balance
+          </div>
+        </Col>
+        <Row className="flex-1 items-center justify-between">
+          <Row className={'text-ink-600 mb-1 ml-1 gap-1'}>
             {formatMoney(earnedToday)} in &{' '}
             {formatMoney(spentToday).replace('-', '')} out today
           </Row>
+          <Button
+            color={'gray-white'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSeeChanges()
+            }}
+          >
+            See log
+          </Button>
         </Row>
-        {previewChanges.length > 0 && (
-          <Col className={'border-ink-300 border-t-2 pt-3'}>
-            <RenderBalanceChanges
-              balanceChanges={previewChanges}
-              user={user}
-              avatarSize={'sm'}
-            />
-            {moreChanges > 0 && (
-              <Row className={'justify-end'}>
-                <Button
-                  color={'gray-white'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onSeeChanges()
-                  }}
-                >
-                  See {moreChanges} more changes
-                </Button>
-              </Row>
-            )}
-          </Col>
-        )}
       </Col>
-      <div className={'absolute right-4 top-3'}>
+      <div className={'absolute right-1 top-1'}>
         <Button
-          color="gray-outline"
+          color="gradient"
           onClick={(e) => {
             e.stopPropagation()
             setShowAddFunds(true)
           }}
-          size="2xs"
+          size="xs"
           className={'whitespace-nowrap'}
         >
           Add funds
@@ -115,8 +105,9 @@ export const BalanceCard = (props: {
 export const BalanceChangeTable = (props: {
   user: User
   balanceChanges: TxnBalanceChange[] | BetBalanceChange[]
+  simple?: boolean
 }) => {
-  const { user } = props
+  const { user, simple } = props
   const [query, setQuery] = useState('')
   const balanceChanges = props.balanceChanges.filter((change) => {
     const { type, contract } = change
@@ -152,6 +143,7 @@ export const BalanceChangeTable = (props: {
           avatarSize={'md'}
           balanceChanges={balanceChanges}
           user={user}
+          simple={simple}
         />
       </Col>
     </Col>
@@ -161,11 +153,20 @@ function RenderBalanceChanges(props: {
   balanceChanges: AnyBalanceChangeType[]
   user: User
   avatarSize: 'sm' | 'md'
+  simple?: boolean
 }) {
-  const { balanceChanges, user, avatarSize } = props
+  const { balanceChanges, user, avatarSize, simple } = props
+  let currBalance = user.balance
+  const balanceRunningTotals = [
+    currBalance,
+    ...balanceChanges.map((change) => {
+      currBalance -= change.amount
+      return currBalance
+    }),
+  ]
   return (
     <>
-      {orderBy(balanceChanges, 'createdTime', 'desc').map((change) => {
+      {orderBy(balanceChanges, 'createdTime', 'desc').map((change, i) => {
         const { type } = change
 
         if (
@@ -181,7 +182,9 @@ function RenderBalanceChanges(props: {
             <BetBalanceChangeRow
               key={change.key ?? change.createdTime + change.amount + type}
               change={change as BetBalanceChange}
+              balance={balanceRunningTotals[i]}
               avatarSize={avatarSize}
+              simple={simple}
             />
           )
         } else if (TXN_BALANCE_CHANGE_TYPES.includes(type)) {
@@ -189,8 +192,10 @@ function RenderBalanceChanges(props: {
             <TxnBalanceChangeRow
               key={change.key ?? change.createdTime + change.amount + type}
               change={change as TxnBalanceChange}
+              balance={balanceRunningTotals[i]}
               avatarlUrl={user.avatarUrl}
               avatarSize={avatarSize}
+              simple={simple}
             />
           )
         }
@@ -256,9 +261,11 @@ const betChangeToText = (change: BetBalanceChange) => {
 }
 const BetBalanceChangeRow = (props: {
   change: BetBalanceChange
+  balance: number
   avatarSize: 'sm' | 'md'
+  simple?: boolean
 }) => {
-  const { change, avatarSize } = props
+  const { change, balance, avatarSize, simple } = props
   const { amount, contract, answer, bet, type } = change
   const { outcome } = bet
   const { slug, question, creatorUsername } = contract
@@ -309,16 +316,16 @@ const BetBalanceChangeRow = (props: {
         />
       </Col>
       <Col className={'w-full overflow-x-hidden'}>
-        <Row className={'justify-between'}>
+        <Row className={'justify-between gap-2'}>
           {slug ? (
             <Link
               href={contractPathWithoutContract(creatorUsername, slug)}
-              className={clsx('line-clamp-1', linkClass)}
+              className={clsx('line-clamp-2', linkClass)}
             >
               {question}
             </Link>
           ) : (
-            <div className={clsx('line-clamp-1')}>{question}</div>
+            <div className={clsx('line-clamp-2')}>{question}</div>
           )}
           <span
             className={clsx(
@@ -331,22 +338,35 @@ const BetBalanceChangeRow = (props: {
           </span>
         </Row>
         <Row>
-          <div className={clsx('text-ink-500 line-clamp-1')}>
-            {betChangeToText(change)}
-            {answer ? ` on ${answer.text}` : ''}
+          <div className={clsx('text-ink-600 line-clamp-1')}>
+            {betChangeToText(change)} {answer ? ` on ${answer.text}` : ''}
           </div>
         </Row>
+        {!simple && (
+          <Row className={'text-ink-600'}>
+            {formatMoney(balance)} {'·'} {customFormatTime(change.createdTime)}
+          </Row>
+        )}
       </Col>
     </Row>
   )
 }
 
+const customFormatTime = (time: number) => {
+  if (time > Date.now() - DAY_MS) {
+    return formatJustTime(time)
+  }
+  return formatTimeShort(time)
+}
+
 const TxnBalanceChangeRow = (props: {
   change: TxnBalanceChange
+  balance: number
   avatarlUrl: string
   avatarSize: 'sm' | 'md'
+  simple?: boolean
 }) => {
-  const { change, avatarSize, avatarlUrl } = props
+  const { change, balance, avatarSize, avatarlUrl, simple } = props
   const { contract, amount, type, user: changeUser } = change
   const reasonToBgClassNameMap: {
     [key in TxnType]: string
@@ -417,19 +437,19 @@ const TxnBalanceChangeRow = (props: {
                 contract.creatorUsername,
                 contract.slug
               )}
-              className={clsx('line-clamp-1', linkClass)}
+              className={clsx('line-clamp-2', linkClass)}
             >
               {txnTitle(change)}
             </Link>
           ) : changeUser ? (
             <Link
               href={'/' + changeUser.username}
-              className={clsx('line-clamp-1', linkClass)}
+              className={clsx('line-clamp-2', linkClass)}
             >
               {txnTitle(change)}
             </Link>
           ) : (
-            <div className={clsx('line-clamp-1')}>{txnTitle(change)}</div>
+            <div className={clsx('line-clamp-2')}>{txnTitle(change)}</div>
           )}
           <span
             className={clsx(
@@ -441,7 +461,12 @@ const TxnBalanceChangeRow = (props: {
             {formatMoney(amount).replace('-', '')}
           </span>
         </Row>
-        <Row className={'text-ink-500'}>{txnTypeToDescription(type)}</Row>
+        <div className={'text-ink-600'}>{txnTypeToDescription(type)}</div>
+        {!simple && (
+          <Row className={'text-ink-600'}>
+            {formatMoney(balance)} {'·'} {customFormatTime(change.createdTime)}
+          </Row>
+        )}
       </Col>
     </Row>
   )
@@ -460,6 +485,8 @@ const txnTitle = (change: TxnBalanceChange) => {
       return !contract ? 'Prediction streak bonus' : contract?.question
     case 'LOAN':
       return 'Loan'
+    case 'LEAGUE_PRIZE':
+      return 'League prize'
     case 'MARKET_BOOST_REDEEM':
       return 'Claim boost'
     case 'SIGNUP_BONUS':

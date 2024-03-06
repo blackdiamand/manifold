@@ -14,7 +14,6 @@ import {
   LoginIcon,
   TemplateIcon,
 } from '@heroicons/react/outline'
-// import { GiftIcon, MapIcon, MoonIcon } from '@heroicons/react/solid'
 import clsx from 'clsx'
 import { buildArray } from 'common/util/array'
 import { capitalize } from 'lodash'
@@ -36,8 +35,8 @@ import { NavItem, SidebarItem } from './sidebar-item'
 import { PrivateMessagesIcon } from 'web/components/messaging/messages-icon'
 import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime'
 import { useState } from 'react'
-import { FaFlagUsa } from 'react-icons/fa6'
-import { getIsNative } from 'web/lib/native/is-native'
+import { IoPersonCircleOutline } from 'react-icons/io5'
+import { GiCapitol } from 'react-icons/gi'
 
 export default function Sidebar(props: {
   className?: string
@@ -61,8 +60,11 @@ export default function Sidebar(props: {
   const navOptions = props.navigationOptions?.length
     ? props.navigationOptions
     : isMobile
-    ? getMobileNav(() => setIsAddFundsModalOpen(!isAddFundsModalOpen))
-    : getDesktopNav(!!user, () => setIsModalOpen(true), true)
+    ? getMobileNav(
+        () => setIsAddFundsModalOpen(!isAddFundsModalOpen),
+        user?.username ?? ''
+      )
+    : getDesktopNav(!!user, () => setIsModalOpen(true))
 
   const bottomNavOptions = bottomNav(!!user, theme, toggleTheme, router)
 
@@ -98,7 +100,9 @@ export default function Sidebar(props: {
 
         {createMarketButton}
       </div>
-      <div className="mb-6 mt-auto flex flex-col gap-1">
+      <div
+        className={clsx('mb-6 mt-auto flex flex-col gap-1', isMobile && 'pb-8')}
+      >
         {user !== null && (
           <AppBadgesOrGetAppButton hideOnDesktop className="mb-2" />
         )}
@@ -114,26 +118,19 @@ export default function Sidebar(props: {
   )
 }
 
-const getDesktopNav = (
-  loggedIn: boolean,
-  openDownloadApp: () => void,
-  showMarkets: boolean
-) => {
+const getDesktopNav = (loggedIn: boolean, openDownloadApp: () => void) => {
   if (loggedIn)
     return buildArray(
       { name: 'Home', href: '/home', icon: HomeIcon },
-      showMarkets
-        ? {
-            name: 'Browse',
-            href: '/browse?topic=for-you',
-            icon: SearchIcon,
-          }
-        : { name: 'News', href: '/news', icon: NewspaperIcon },
+      {
+        name: 'Browse',
+        href: '/browse/for-you',
+        icon: SearchIcon,
+      },
       {
         name: 'US Politics',
-        href: 'https://manifoldpolitics.com/',
-        icon: FaFlagUsa,
-        external: true,
+        href: '/politics',
+        icon: GiCapitol,
       },
       {
         name: 'Notifications',
@@ -151,34 +148,27 @@ const getDesktopNav = (
     )
 
   return buildArray(
-    { name: 'Browse', href: '/browse', icon: SearchIcon },
     {
       name: 'US Politics',
-      href: 'https://manifoldpolitics.com/',
-      icon: FaFlagUsa,
-      external: true,
+      href: '/politics',
+      icon: GiCapitol,
     },
     { name: 'News', href: '/news', icon: NewspaperIcon },
+    { name: 'Browse', href: '/browse', icon: SearchIcon },
     { name: 'About', href: '/about', icon: QuestionMarkCircleIcon },
     { name: 'App', onClick: openDownloadApp, icon: DeviceMobileIcon }
   )
 }
 
 // No sidebar when signed out
-const getMobileNav = (toggleModal: () => void) => {
+const getMobileNav = (toggleModal: () => void, username: string) => {
   return buildArray<NavItem>(
-    getIsNative()
-      ? {
-          name: 'US Elections',
-          href: '/elections',
-          icon: FaFlagUsa,
-        }
-      : {
-          name: 'US Politics',
-          href: 'https://manifoldpolitics.com/',
-          icon: FaFlagUsa,
-          external: true,
-        },
+    { name: 'Profile', href: '/' + username, icon: IoPersonCircleOutline },
+    // {
+    //   name: 'US Politics',
+    //   href: '/politics',
+    //   icon: FaFlagUsa,
+    // },
     { name: 'Leagues', href: '/leagues', icon: TrophyIcon },
     { name: 'Dashboards', href: '/dashboard', icon: TemplateIcon },
     { name: 'Messages', href: '/messages', icon: PrivateMessagesIcon },

@@ -3,7 +3,7 @@ import {
   pgp,
   SupabaseDirectClient,
 } from 'shared/supabase/init'
-import { Comment, ContractComment } from 'common/comment'
+import { Comment } from 'common/comment'
 import { getUserToReasonsInterestedInContractAndUser } from 'shared/supabase/contracts'
 import { Contract, CPMMContract } from 'common/contract'
 import {
@@ -12,7 +12,7 @@ import {
   FEED_DATA_TYPES,
   FEED_REASON_TYPES,
 } from 'common/feed'
-import { GCPLog, log as oldLog } from 'shared/utils'
+import { log } from 'shared/utils'
 import { convertObjectToSQLRow, Row } from 'common/supabase/utils'
 import { DAY_MS } from 'common/util/time'
 
@@ -29,19 +29,13 @@ export const bulkInsertDataToUserFeed = async (
   dataProps: {
     contractId?: string
     commentId?: string
-    answerIds?: string[]
     creatorId?: string
-    newsId?: string
     data?: any
-    groupId?: string
-    reactionId?: string
     idempotencyKey?: string
-    betData?: any
     postId?: number
     betId?: string
   },
-  pg: SupabaseDirectClient,
-  log?: GCPLog
+  pg: SupabaseDirectClient
 ) => {
   const eventTimeTz = new Date(eventTime).toISOString()
 
@@ -58,7 +52,6 @@ export const bulkInsertDataToUserFeed = async (
         ...dataProps,
         userId,
         ...reasonAndScore,
-        reason: reasonAndScore.reasons[0],
         dataType,
         eventTime: eventTimeTz,
       })
@@ -87,31 +80,10 @@ export const createManualTrendingFeedRow = (
         creatorId: contract.creatorId,
         userId: forUserId,
         eventTime: new Date(now).toISOString(),
-        reason: 'similar_interest_vector_to_contract',
         dataType: 'trending_contract',
         reasons,
         relevanceScore: contract.importanceScore * estimatedRelevance,
       }) as Row<'user_feed'>
-  )
-}
-
-const matchingFeedRows = async (
-  contractId: string,
-  userIds: string[],
-  seenTime: number,
-  dataTypes: FEED_DATA_TYPES[],
-  pg: SupabaseDirectClient
-) => {
-  return await pg.map(
-    `select *
-            from user_feed
-            where contract_id = $1 and
-                user_id = ANY($2) and
-                greatest(created_time, seen_time) > $3 and
-                data_type = ANY($4)
-                `,
-    [contractId, userIds, new Date(seenTime).toISOString(), dataTypes],
-    (row) => row as Row<'user_feed'>
   )
 }
 
@@ -124,10 +96,10 @@ const userIdsToIgnore = async (
 ) => {
   const userIdsWithSeenMarkets = await pg.map(
     `select distinct user_id
-            from user_seen_markets
+            from user_contract_views
             where contract_id = $1 and
                 user_id = ANY($2) and
-                created_time > $3
+                greatest(last_page_view_ts, last_promoted_view_ts, last_card_view_ts) > $3
                 `,
     [contractId, userIds, new Date(seenTime).toISOString(), dataTypes],
     (row: { user_id: string }) => row.user_id
@@ -151,44 +123,12 @@ const userIdsToIgnore = async (
   return userIdsWithFeedRows.concat(userIdsWithSeenMarkets)
 }
 
-export const addCommentOnContractToFeed = async (
-  contract: Contract,
-  comment: ContractComment,
-  userIdsToExclude: string[]
-) => {
-  if (comment.isRepost || comment.replyToCommentId) return
-  const pg = createSupabaseDirectClient()
-  const usersToReasonsInterestedInContract =
-    await getUserToReasonsInterestedInContractAndUser(
-      contract,
-      comment.userId,
-      pg,
-      ['follow_contract'],
-      false,
-      'new_comment'
-    )
-  await bulkInsertDataToUserFeed(
-    usersToReasonsInterestedInContract,
-    comment.createdTime,
-    'new_comment',
-    userIdsToExclude,
-    {
-      contractId: contract.id,
-      commentId: comment.id,
-      creatorId: comment.userId,
-      idempotencyKey: comment.id,
-    },
-    pg
-  )
-}
-
 export const repostContractToFeed = async (
   contract: Contract,
   comment: Comment,
   creatorId: string,
   postId: number,
   userIdsToExclude: string[],
-  log: GCPLog,
   betId?: string
 ) => {
   const pg = createSupabaseDirectClient()
@@ -223,8 +163,7 @@ export const repostContractToFeed = async (
       betId,
       postId,
     },
-    pg,
-    log
+    pg
   )
 }
 
@@ -262,7 +201,7 @@ export const addContractToFeed = async (
     },
     pg
   )
-  oldLog(
+  log(
     `Added contract ${contract.id} to feed of ${
       Object.keys(usersToReasonsInterestedInContract).length
     } users`
@@ -275,7 +214,6 @@ export const addContractToFeedIfNotDuplicative = async (
   dataType: FEED_DATA_TYPES,
   userIdsToExclude: string[],
   unseenNewerThanTime: number,
-  log: GCPLog,
   data?: Record<string, any>,
   trendingContractType?: 'old' | 'new'
 ) => {
@@ -315,8 +253,7 @@ export const addContractToFeedIfNotDuplicative = async (
 }
 
 export const insertMarketMovementContractToUsersFeeds = async (
-  contract: CPMMContract,
-  log: GCPLog
+  contract: CPMMContract
 ) => {
   await addContractToFeedIfNotDuplicative(
     contract,
@@ -329,7 +266,6 @@ export const insertMarketMovementContractToUsersFeeds = async (
     'contract_probability_changed',
     [],
     Date.now() - 1.5 * DAY_MS,
-    log,
     {
       currentProb: contract.prob,
       previousProb: contract.prob - contract.probChanges.day,
@@ -340,8 +276,7 @@ export const insertTrendingContractToUsersFeeds = async (
   contract: Contract,
   unseenNewerThanTime: number,
   data: Record<string, any>,
-  trendingContractType: 'old' | 'new',
-  log: GCPLog
+  trendingContractType: 'old' | 'new'
 ) => {
   await addContractToFeedIfNotDuplicative(
     contract,
@@ -354,7 +289,6 @@ export const insertTrendingContractToUsersFeeds = async (
     'trending_contract',
     [contract.creatorId],
     unseenNewerThanTime,
-    log,
     data,
     trendingContractType
   )

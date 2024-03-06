@@ -12,6 +12,7 @@ import { Input } from './input'
 import { useCurrentPortfolio } from 'web/hooks/use-portfolio-history'
 import { BetSlider } from '../bet/bet-slider'
 import { IncrementDecrementAmountButton } from './increment-button'
+import { useIsAdvancedTrader } from 'web/hooks/use-is-advanced-trader'
 
 export function AmountInput(
   props: {
@@ -47,6 +48,8 @@ export function AmountInput(
   const [amountString, setAmountString] = useState(amount?.toString() ?? '')
 
   const parse = allowFloat ? parseFloat : parseInt
+
+  const isAdvancedTrader = useIsAdvancedTrader()
 
   const bannedChars = new RegExp(
     `[^\\d${allowFloat && '.'}${allowNegative && '-'}]`,
@@ -107,7 +110,7 @@ export function AmountInput(
                 )}
                 onClick={() => onChangeAmount(undefined)}
               />
-              {quickAddMoreButton}
+              {isAdvancedTrader && quickAddMoreButton}
             </Row>
           </div>
         </label>
@@ -149,6 +152,7 @@ export function BuyAmountInput(props: {
   inputRef?: React.MutableRefObject<any>
   disregardUserBalance?: boolean
   quickButtonValues?: number[] | 'large'
+  disableQuickButtons?: boolean
 }) {
   const {
     amount,
@@ -167,6 +171,7 @@ export function BuyAmountInput(props: {
     maximumAmount,
     disregardUserBalance,
     quickButtonValues,
+    disableQuickButtons,
   } = props
   const user = useUser()
 
@@ -205,14 +210,18 @@ export function BuyAmountInput(props: {
       ? [100, 500]
       : quickButtonValues ?? (hasLotsOfMana ? [10, 50, 250] : [1, 10])
 
+  const isAdvancedTrader = useIsAdvancedTrader()
+
   return (
     <>
       <Col className={clsx('w-full max-w-[350px] gap-2', parentClassName)}>
         <AmountInput
           className={className}
           inputClassName={clsx(
-            '!h-[72px] w-full',
-            hasLotsOfMana ? 'pr-[182px]' : 'pr-[134px]',
+            'w-full',
+            isAdvancedTrader ? '!h-[72px]' : '!h-[54px]',
+            !disableQuickButtons &&
+              (hasLotsOfMana ? 'pr-[182px]' : 'pr-[134px]'),
             inputClassName
           )}
           amount={amount}
@@ -222,18 +231,19 @@ export function BuyAmountInput(props: {
           disabled={disabled}
           inputRef={inputRef}
           quickAddMoreButton={
-            <Row className="divide-ink-300 divide-x text-sm">
-              {incrementValues.map((increment) => (
-                <IncrementDecrementAmountButton
-                  key={increment}
-                  amount={increment}
-                  incrementBy={incrementBy}
-                />
-              ))}
-            </Row>
+            disableQuickButtons ? undefined : (
+              <Row className="divide-ink-300 divide-x text-sm">
+                {incrementValues.map((increment) => (
+                  <IncrementDecrementAmountButton
+                    key={increment}
+                    amount={increment}
+                    incrementBy={incrementBy}
+                  />
+                ))}
+              </Row>
+            )
           }
         />
-
         {showSlider && (
           <BetSlider
             className="-mt-2"
@@ -244,7 +254,6 @@ export function BuyAmountInput(props: {
             smallManaAmounts={!hasLotsOfMana}
           />
         )}
-
         {error ? (
           <div className="text-scarlet-500 mt-4 flex-wrap text-sm">
             {error === 'Insufficient balance' ? <BuyMoreFunds /> : error}
